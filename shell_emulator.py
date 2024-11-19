@@ -72,3 +72,85 @@ class ShellEmulator:
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
         return "Exiting shell emulator."
+
+class ShellGUI:
+    def __init__(self, root, shell):
+        self.shell = shell
+        self.root = root
+        self.root.title("Shell Emulator GUI")
+        
+        # Поле для вывода текста
+        self.output_text = scrolledtext.ScrolledText(root, wrap=tk.WORD, height=20, width=60)
+        self.output_text.pack(padx=10, pady=10)
+        self.output_text.insert(tk.END, self.shell.prompt())
+        self.output_text.configure(state=tk.DISABLED)  # Поле вывода только для чтения
+        
+        # Поле для ввода текста
+        self.input_text = tk.Entry(root, width=60)
+        self.input_text.pack(padx=10, pady=(0, 10))
+        self.input_text.bind("<Return>", self.execute_command)  # Обработка нажатия Enter
+
+    def execute_command(self, event):
+        command = self.input_text.get().strip()
+        self.input_text.delete(0, tk.END)
+        
+        # Вывод введенной команды в поле вывода
+        self.output_text.configure(state=tk.NORMAL)
+        self.output_text.insert(tk.END, command + "\n")
+        
+        # Выполнение команды
+        parts = command.split()
+        if not parts:
+            return
+        cmd, *args = parts
+        try:
+            if cmd == "ls":
+                try:
+                    output = "\n".join(self.shell.ls(args[0] if args else None))
+                except FileNotFoundError as e:
+                    output = str(e)
+            elif cmd == "cd":
+                try:
+                    self.shell.cd(args[0] if args else "/")
+                    output = ""
+                except FileNotFoundError as e:
+                    output = str(e)
+            elif cmd == "echo":
+                output = self.shell.echo(*args)
+            elif cmd == "chmod":
+                if len(args) < 2:
+                    output = "chmod: missing operand"
+                else:
+                    try:
+                        self.shell.chmod(args[0], args[1])
+                        output = ""
+                    except FileNotFoundError as e:
+                        output = str(e)
+            elif cmd == "uname":
+                output = self.shell.uname()
+            elif cmd == "exit":
+                output = self.shell.exit()
+                self.root.quit()
+            else:
+                output = f"Command not found: {cmd}"
+        except Exception as e:
+            output = str(e)
+        
+        # Вывод результата в поле вывода
+        if output:
+            self.output_text.insert(tk.END, output + "\n")
+        self.output_text.insert(tk.END, self.shell.prompt())
+        self.output_text.configure(state=tk.DISABLED)
+        self.output_text.see(tk.END)  # Прокрутка вниз
+
+def main():
+    config_path = "config.yaml"
+    shell = ShellEmulator(config_path)
+    
+    # Создаем главное окно приложения
+    root = tk.Tk()
+    app = ShellGUI(root, shell)
+    root.mainloop()
+
+if __name__ == "__main__":
+    main()
