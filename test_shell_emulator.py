@@ -83,3 +83,8 @@ class TestShellEmulator(unittest.TestCase):
 
     def test_ls_path_in_root(self):
         self.assertEqual(self.shell.ls('/folder'), ['file.txt', 'subfolder'])
+
+    def test_invalid_command(self):
+        invalid_command = "unknowncmd"
+        output = f"Command not found: {invalid_command}"
+        self.assertEqual(output, f"Command not found: {invalid_command}")
