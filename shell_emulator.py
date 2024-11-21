@@ -1,104 +1,135 @@
 import os
 import zipfile
 import yaml
-import shutil
-import tempfile
 import tkinter as tk
 from tkinter import scrolledtext
+
 
 class ShellEmulator:
     def __init__(self, config_path):
         self.load_config(config_path)
         self.current_dir = '/'
-        self.temp_dir = tempfile.mkdtemp()
-        self.fs_root = os.path.join(self.temp_dir, "fs")
+        self.fs_zip_path = self.config['fs_path']
         self.username = self.config['username']
-        
-        # Разархивируем виртуальную файловую систему во временную директорию
-        with zipfile.ZipFile(self.config['fs_path'], 'r') as zip_ref:
-            zip_ref.extractall(self.fs_root)
-        
+        self.permissions = {}
+
+        # Проверяем, что указанный архив существует
+        if not os.path.exists(self.fs_zip_path):
+            raise FileNotFoundError(f"Filesystem archive not found: {self.fs_zip_path}")
+
+        # Открываем архив zip для работы
+        self.zip_file = zipfile.ZipFile(self.fs_zip_path, 'r')
+        self.fs_structure = self.zip_file.namelist()
+
+        # Генерируем начальные права доступа
+        self._initialize_permissions()
+
     def load_config(self, config_path):
         with open(config_path, 'r') as file:
             self.config = yaml.safe_load(file)
-    
+
     def prompt(self):
         return f"{self.username}@emulator:{self.current_dir}$ "
-    
+
+    def _resolve_path(self, path):
+        if path == "/":
+            return "/"
+        elif path == "..":
+            return os.path.dirname(self.current_dir.rstrip('/')) or '/'
+        elif not path.startswith('/'):
+            path = os.path.join(self.current_dir, path)
+        return os.path.normpath(path).lstrip('/')
+
+    def _initialize_permissions(self):
+        for item in self.fs_structure:
+            if not item.endswith('/'):
+                self.permissions[item] = "rw-"
+
     def ls(self, path=None):
-        # Если путь не указан, используем текущую директорию
         if path is None:
-            path = self.current_dir
+            path = '/' + self.current_dir.lstrip('/')
 
-        # Преобразуем относительный путь в абсолютный
-        new_path = os.path.normpath(os.path.join(self.current_dir, path))
-        full_path = os.path.join(self.fs_root, new_path.lstrip('/'))
+        resolved_path = self._resolve_path(path)
+        if not resolved_path.endswith('/'):
+            resolved_path += '/'
 
-        # Проверяем, существует ли указанная директория
-        if os.path.isdir(full_path):
-            # Получаем содержимое директории, исключая скрытые файлы и папку __MACOSX
-            items = os.listdir(full_path)
-            return [item for item in items if not item.startswith('.') and item != '__MACOSX']
+        if resolved_path == '/':
+            resolved_path = ''  # Путь к корню не должен содержать "/"
+
+        # Проверяем, есть ли в архиве файлы или папки, соответствующие указанному пути
+        contents = set()
+        for item in self.fs_structure:
+            # Сравниваем пути в архиве с текущей директорией
+            if item.startswith(resolved_path) and item != resolved_path:
+                sub_path = item[len(resolved_path):].split('/')[0]
+                if sub_path and sub_path != "__MACOSX":  # Исключаем системные файлы
+                    contents.add(sub_path)
+
+        if contents:
+            return sorted(contents)
         else:
             raise FileNotFoundError(f"No such directory: {path}")
-    
+
     def cd(self, path):
-        if path == '/':
+        resolved_path = self._resolve_path(path)
+
+        # Переход в корень
+        if resolved_path == '/':
             self.current_dir = '/'
+            return
+
+        # Переход к родительской директории или другой директории
+        if any(item.startswith(resolved_path.rstrip('/') + '/') for item in self.fs_structure):
+            self.current_dir = resolved_path
         else:
-            new_path = os.path.normpath(os.path.join(self.current_dir, path))
-            full_path = os.path.join(self.fs_root, new_path.lstrip('/'))
-            if os.path.isdir(full_path):
-                self.current_dir = new_path
-            else:
-                raise FileNotFoundError(f"No such directory: {path}")
-    
+            raise FileNotFoundError(f"No such directory: {path}")
+
     def echo(self, *args):
         return ' '.join(args)
-    
+
     def chmod(self, mode, path):
-        if not path.startswith('/'):
-            path = os.path.join(self.current_dir, path)
-        
-        full_path = os.path.join(self.fs_root, path.lstrip('/'))
-        if not os.path.exists(full_path):
+        resolved_path = self._resolve_path(path)
+
+        # Проверяем, существует ли файл в виртуальной файловой системе
+        if resolved_path not in self.permissions:
             raise FileNotFoundError(f"No such file or directory: {path}")
-        os.chmod(full_path, int(mode, 8))
-    
+
+        # Обновляем права доступа
+        self.permissions[resolved_path] = mode
+
     def uname(self):
         return "UNIX-Like Emulator"
-    
+
     def exit(self):
-        if os.path.exists(self.temp_dir):
-            shutil.rmtree(self.temp_dir)
+        self.zip_file.close()
         return "Exiting shell emulator."
+
 
 class ShellGUI:
     def __init__(self, root, shell):
         self.shell = shell
         self.root = root
         self.root.title("Shell Emulator GUI")
-        
+
         # Поле для вывода текста
         self.output_text = scrolledtext.ScrolledText(root, wrap=tk.WORD, height=20, width=60)
         self.output_text.pack(padx=10, pady=10)
         self.output_text.insert(tk.END, self.shell.prompt())
-        self.output_text.configure(state=tk.DISABLED)  # Поле вывода только для чтения
-        
+        self.output_text.configure(state=tk.DISABLED)
+
         # Поле для ввода текста
         self.input_text = tk.Entry(root, width=60)
         self.input_text.pack(padx=10, pady=(0, 10))
-        self.input_text.bind("<Return>", self.execute_command)  # Обработка нажатия Enter
+        self.input_text.bind("<Return>", self.execute_command)
 
     def execute_command(self, event):
         command = self.input_text.get().strip()
         self.input_text.delete(0, tk.END)
-        
+
         # Вывод введенной команды в поле вывода
         self.output_text.configure(state=tk.NORMAL)
         self.output_text.insert(tk.END, command + "\n")
-        
-        # Выполнение команды
+
         parts = command.split()
         if not parts:
             return
@@ -135,22 +166,22 @@ class ShellGUI:
                 output = f"Command not found: {cmd}"
         except Exception as e:
             output = str(e)
-        
-        # Вывод результата в поле вывода
+
         if output:
             self.output_text.insert(tk.END, output + "\n")
         self.output_text.insert(tk.END, self.shell.prompt())
         self.output_text.configure(state=tk.DISABLED)
-        self.output_text.see(tk.END)  # Прокрутка вниз
+        self.output_text.see(tk.END)
+
 
 def main():
     config_path = "config.yaml"
     shell = ShellEmulator(config_path)
-    
-    # Создаем главное окно приложения
+
     root = tk.Tk()
     app = ShellGUI(root, shell)
     root.mainloop()
+
 
 if __name__ == "__main__":
     main()
