@@ -64,7 +64,7 @@ zip. Эмулятор должен работать в режиме **GUI**.
 3. Перейти в папку с проектом
    
    ```html
-   cd konfig_1
+   cd config_1
    ```
 
 5. Запустить эмулятор
@@ -74,4 +74,4 @@ zip. Эмулятор должен работать в режиме **GUI**.
    ```
 
 6. Пример использования
-![alt text](<./images/shellguiexample.png>)a
+![alt text](<./images/shellguiexample.png>)
