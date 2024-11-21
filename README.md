@@ -52,7 +52,7 @@ zip. Эмулятор должен работать в режиме **GUI**.
 
 ### Тестирование
 Тестирование функционала пройдено успешно:
-![alt text](<./images/successful_test.png>)a
+![alt text](<./images/successful_test.png>)
 
 ### Запуск
 1. Клонировать репозиторий:
@@ -61,17 +61,17 @@ zip. Эмулятор должен работать в режиме **GUI**.
    git clone https://github.com/nikitawastaken/config_1.git
    ```
 
-3. Перейти в папку с проектом
+2. Перейти в папку с проектом
    
    ```html
    cd config_1
    ```
 
-5. Запустить эмулятор
+3. Запустить эмулятор
    
    ```html
    python3 shell_emulator.py
    ```
 
-6. Пример использования
+4. Пример использования
 ![alt text](<./images/shellguiexample.png>)
