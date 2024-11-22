@@ -2,20 +2,23 @@ import unittest
 import zipfile
 import yaml
 import os
-import shutil
 from shell_emulator import ShellEmulator
+
 
 class TestShellEmulator(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.test_fs_zip = 'test_fs.zip'
         cls.config_file = 'test_config.yaml'
-        
+
+        # Создаём zip-файл с тестовой файловой системой
         with zipfile.ZipFile(cls.test_fs_zip, 'w') as zip_ref:
-            zip_ref.writestr('folder/file.txt', 'test content')
-            zip_ref.writestr('folder/subfolder/', '')
-            zip_ref.writestr('__MACOSX/', '')
-        
+            zip_ref.writestr('file1.txt', 'root file')  # Файл в корне
+            zip_ref.writestr('folder/file2.txt', 'folder file')  # Файл в папке
+            zip_ref.writestr('folder/subfolder/file3.txt', 'nested file')  # Файл в подкаталоге
+            zip_ref.writestr('folder/subfolder/', '')  # Пустая папка
+
+        # Создаём конфигурационный файл
         config_data = {
             'username': 'testuser',
             'fs_path': cls.test_fs_zip
@@ -36,55 +39,56 @@ class TestShellEmulator(unittest.TestCase):
             self.shell.exit()
         except FileNotFoundError:
             pass
-    
+
     def test_ls_root(self):
-        self.assertIn('folder', self.shell.ls())
-        self.assertNotIn('__MACOSX', self.shell.ls())
-    
-    def test_ls_with_path(self):
-        self.assertEqual(self.shell.ls('folder'), ['file.txt', 'subfolder'])
-    
-    def test_cd_to_folder(self):
+        expected = ['file1.txt', 'folder']
+        result = self.shell.ls()
+        self.assertEqual(result, expected)
+
+    def test_ls_subdirectory(self):
         self.shell.cd('folder')
-        self.assertEqual(self.shell.current_dir, '/folder')
-    
-    def test_cd_nonexistent(self):
+        expected = ['file2.txt', 'subfolder']
+        result = self.shell.ls()
+        self.assertEqual(result, expected)
+
+    def test_cd_to_subfolder(self):
+        self.shell.cd('folder/subfolder')
+        self.assertEqual(self.shell.current_dir, 'folder/subfolder')
+
+    def test_cd_to_parent(self):
+        self.shell.cd('folder/subfolder')
+        self.shell.cd('..')
+        self.assertEqual(self.shell.current_dir, 'folder')
+
+    def test_cd_root(self):
+        self.shell.cd('folder')
+        self.shell.cd('/')
+        self.assertEqual(self.shell.current_dir, '/')
+
+    def test_echo(self):
+        result = self.shell.echo('Hello', 'world!')
+        self.assertEqual(result, 'Hello world!')
+
+    def test_uname(self):
+        result = self.shell.uname()
+        self.assertEqual(result, 'UNIX-Like Emulator')
+
+    def test_chmod(self):
+        self.shell.chmod('rwx', 'folder/file2.txt')
+        self.assertEqual(self.shell.permissions['folder/file2.txt'], 'rwx')
+
+    def test_chmod_absolute_path(self):
+        self.shell.chmod('rw-', '/folder/file2.txt')
+        self.assertEqual(self.shell.permissions['folder/file2.txt'], 'rw-')
+
+    def test_ls_nonexistent_directory(self):
+        with self.assertRaises(FileNotFoundError):
+            self.shell.ls('nonexistent')
+
+    def test_cd_nonexistent_directory(self):
         with self.assertRaises(FileNotFoundError):
             self.shell.cd('nonexistent')
 
-    def test_echo(self):
-        self.assertEqual(self.shell.echo('Hello', 'World'), 'Hello World')
-
-    def test_chmod_file(self):
-        self.shell.chmod('755', 'folder/file.txt')
-        full_path = os.path.join(self.shell.fs_root, 'folder/file.txt')
-        self.assertEqual(oct(os.stat(full_path).st_mode)[-3:], '755')
-    
-    def test_chmod_nonexistent(self):
+    def test_chmod_nonexistent_file(self):
         with self.assertRaises(FileNotFoundError):
-            self.shell.chmod('755', 'nonexistent.txt')
-    
-    def test_uname(self):
-        self.assertEqual(self.shell.uname(), "UNIX-Like Emulator")
-    
-    def test_exit(self):
-        self.assertEqual(self.shell.exit(), "Exiting shell emulator.")
-    
-    def test_ls_excludes_mac_system_files(self):
-        self.assertNotIn('__MACOSX', self.shell.ls())
-    
-    def test_ls_nonexistent_path(self):
-        with self.assertRaises(FileNotFoundError):
-            self.shell.ls('nonexistent_path')
-    
-    def test_ls_in_subfolder(self):
-        self.shell.cd('folder')
-        self.assertEqual(self.shell.ls(), ['file.txt', 'subfolder'])
-
-    def test_ls_path_in_root(self):
-        self.assertEqual(self.shell.ls('/folder'), ['file.txt', 'subfolder'])
-
-    def test_invalid_command(self):
-        invalid_command = "unknowncmd"
-        output = f"Command not found: {invalid_command}"
-        self.assertEqual(output, f"Command not found: {invalid_command}")
+            self.shell.chmod('rwx', 'nonexistent.txt')
